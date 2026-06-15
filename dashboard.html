@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>📊 Dashboard — Stock Screener</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  .num-up { color: #16a34a; }
+  .num-down { color: #dc2626; }
+  .loader { border: 3px solid #e5e7eb; border-top: 3px solid #2563eb; border-radius: 50%; width: 24px; height: 24px; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .chip { display: inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 600; }
+  .chip-buy { background: #dcfce7; color: #166534; }
+  .chip-hold { background: #fef3c7; color: #92400e; }
+  .chip-sell { background: #fee2e2; color: #991b1b; }
+  .gauge-bg { background: #e5e7eb; height: 6px; border-radius: 3px; overflow: hidden; }
+  .gauge-fill { height: 100%; border-radius: 3px; transition: width 0.5s; }
+  .tab-btn { padding: 6px 16px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.15s; }
+  .tab-active { background: #2563eb; color: white; }
+  .tab-inactive { background: #f3f4f6; color: #6b7280; }
+  .tab-inactive:hover { background: #e5e7eb; }
+</style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+<header class="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-40">
+  <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-4">
+      <h1 class="text-xl font-bold text-gray-900">📊 Dashboard</h1>
+      <nav class="flex gap-2">
+        <a href="/" class="tab-btn tab-inactive">Screener</a>
+        <a href="/dashboard" class="tab-btn tab-active">Dashboard</a>
+      </nav>
+    </div>
+    <div class="flex items-center gap-3">
+      <span id="last-update" class="text-xs text-gray-400">—</span>
+      <button onclick="loadDashboard()" class="text-sm text-blue-600 hover:text-blue-800">🔄 Aktualisieren</button>
+      <span id="clock" class="text-sm text-gray-500"></span>
+    </div>
+  </div>
+</header>
+
+<main class="max-w-6xl mx-auto px-4 py-6 space-y-6">
+
+<!-- Markt-Karten -->
+<section>
+  <h2 class="text-lg font-semibold text-gray-800 mb-3">Markt-Übersicht</h2>
+  <div id="market-cards" class="grid grid-cols-2 md:grid-cols-3 gap-3">
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 animate-pulse"><div class="h-4 bg-gray-200 rounded w-12 mb-2"></div><div class="h-6 bg-gray-200 rounded w-20"></div></div>
+  </div>
+</section>
+
+<!-- Watchlist -->
+<section>
+  <div class="flex items-center justify-between mb-3">
+    <h2 class="text-lg font-semibold text-gray-800">Watchlist</h2>
+    <div class="flex gap-2">
+      <input id="wl-input" type="text" value="AAPL,MSFT,NVDA,TSLA,AMZN,GOOGL,META,AMD,SPY,QQQ,JPM,V,BRK-B"
+             class="border border-gray-300 rounded-lg px-3 py-1 text-sm w-80 focus:outline-none focus:ring-2 focus:ring-blue-500"
+             onkeydown="if(event.key==='Enter')loadDashboard()">
+      <button onclick="loadDashboard()" class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-1.5 rounded-lg text-sm">Laden</button>
+    </div>
+  </div>
+  <div id="dashboard-status" class="text-gray-500 text-sm"></div>
+  <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
+    <table class="w-full text-sm" id="dash-table">
+      <thead class="bg-gray-100 text-gray-600 uppercase text-xs">
+        <tr>
+          <th class="px-4 py-3 text-left">Ticker</th>
+          <th class="px-4 py-3 text-left">Name</th>
+          <th class="px-4 py-3 text-right">Preis</th>
+          <th class="px-4 py-3 text-right">Tag</th>
+          <th class="px-4 py-3 text-right">YTD</th>
+          <th class="px-4 py-3 text-right">RSI</th>
+          <th class="px-4 py-3 text-right">PE fwd</th>
+          <th class="px-4 py-3 text-right">SMA50</th>
+          <th class="px-4 py-3 text-center">Rating</th>
+          <th class="px-4 py-3 text-right">Ziel ±%</th>
+        </tr>
+      </thead>
+      <tbody id="dash-body" class="divide-y divide-gray-200">
+        <tr><td colspan="10" class="px-4 py-8 text-center text-gray-400">Lade Dashboard...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- Top/Flop + Alerts -->
+<section class="grid grid-cols-1 md:grid-cols-2 gap-6">
+  <!-- Top Performer -->
+  <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+    <h3 class="font-semibold text-gray-800 mb-3">🚀 Top Performer (heute)</h3>
+    <div id="top-performers" class="space-y-2 text-sm"></div>
+  </div>
+  <!-- Signals -->
+  <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+    <h3 class="font-semibold text-gray-800 mb-3">⚡ Signale</h3>
+    <div id="signals" class="space-y-2 text-sm"></div>
+  </div>
+</section>
+
+</main>
+
+<script>
+let dashData = null;
+
+document.addEventListener('DOMContentLoaded', () => {
+  updateClock(); setInterval(updateClock, 30000);
+  loadDashboard();
+});
+
+function updateClock() { document.getElementById('clock').textContent = new Date().toLocaleString('de-DE', {timeZone: 'Europe/Berlin'}); }
+
+async function loadDashboard() {
+  document.getElementById('dashboard-status').innerHTML = '<div class="flex items-center gap-2"><div class="loader"></div> Lade Watchlist...</div>';
+  const wl = document.getElementById('wl-input').value;
+  try {
+    const res = await fetch(`/api/dashboard?watchlist=${encodeURIComponent(wl)}`);
+    dashData = await res.json();
+    document.getElementById('last-update').textContent = 'Stand: ' + new Date(dashData.timestamp).toLocaleTimeString('de-DE');
+    document.getElementById('dashboard-status').innerHTML = '';
+    renderMarketCards(dashData.market);
+    renderWatchlist(dashData.stocks);
+    renderSignals(dashData.stocks);
+  } catch(e) {
+    document.getElementById('dashboard-status').innerHTML = `<span class="text-red-600">Fehler: ${e.message}</span>`;
+  }
+}
+
+function renderMarketCards(market) {
+  const order = [
+    {key:'SPY', label:'S&P 500'}, {key:'QQQ', label:'Nasdaq 100'}, {key:'VIX', label:'VIX (Angst)'}
+  ];
+  document.getElementById('market-cards').innerHTML = order.map(({key,label}) => {
+    const d = market[key]; if (!d || d.error) return '';
+    const pct = d.change_pct || 0; const cls = pct >= 0 ? 'num-up' : 'num-down';
+    let extra = '';
+    if (key === 'VIX') {
+      const vix = d.price || 0;
+      extra = vix < 15 ? '😴 Ruhig' : (vix < 20 ? '😐 Normal' : (vix < 25 ? '😟 Erhöht' : '😱 Angst'));
+    }
+    return `<div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+      <div class="text-xs text-gray-500 uppercase tracking-wide">${label}</div>
+      <div class="text-2xl font-bold mt-1">${fmtNum(d.price)}</div>
+      <div class="flex justify-between items-center mt-1">
+        <span class="text-sm ${cls}">${pct>=0?'▲':'▼'} ${Math.abs(pct).toFixed(2)}%</span>
+        ${extra ? `<span class="text-xs text-gray-500">${extra}</span>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderWatchlist(stocks) {
+  if (!stocks || stocks.length === 0) {
+    document.getElementById('dash-body').innerHTML = '<tr><td colspan="10" class="px-4 py-8 text-center text-gray-400">Keine Daten</td></tr>';
+    return;
+  }
+  document.getElementById('dash-body').innerHTML = stocks.map(s => {
+    if (s.error) return `<tr><td class="px-4 py-3 text-red-500">❌ ${s.ticker}</td><td colspan="9">${s.error}</td></tr>`;
+    const pct = s.change_pct || 0, pctCls = pct >= 0 ? 'num-up' : 'num-down';
+    const ytd = s.ytd_return || 0, ytdCls = ytd >= 0 ? 'num-up' : 'num-down';
+    const rating = s.recommendation || '';
+    let chipCls = rating.includes('BUY') ? 'chip-buy' : (rating.includes('HOLD') ? 'chip-hold' : '');
+    const aboveSMA = s.sma50 && s.price > s.sma50;
+    return `<tr class="hover:bg-gray-50">
+      <td class="px-4 py-3 font-semibold text-blue-700">${s.ticker}${aboveSMA ? ' ◆' : ''}</td>
+      <td class="px-4 py-3 max-w-[160px] truncate" title="${s.name}">${s.name||'-'}</td>
+      <td class="px-4 py-3 text-right font-medium">${fmtNum(s.price)}</td>
+      <td class="px-4 py-3 text-right ${pctCls}">${pct>=0?'▲':'▼'}${Math.abs(pct).toFixed(2)}%</td>
+      <td class="px-4 py-3 text-right ${ytdCls}">${ytd>0?'+':''}${ytd.toFixed(1)}%</td>
+      <td class="px-4 py-3 text-right">${s.rsi_14||'-'}</td>
+      <td class="px-4 py-3 text-right">${s.pe_forward ? s.pe_forward.toFixed(1) : '-'}</td>
+      <td class="px-4 py-3 text-right">${fmtNum(s.sma50)}</td>
+      <td class="px-4 py-3 text-center">${rating ? `<span class="chip ${chipCls}">${rating.replace('_',' ')}</span>` : '-'}</td>
+      <td class="px-4 py-3 text-right ${(s.target_upside||0)>0?'num-up':'num-down'}">${s.target_upside!=null ? (s.target_upside>0?'+':'')+s.target_upside+'%' : '-'}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderSignals(stocks) {
+  if (!stocks || stocks.length === 0) return;
+  const valid = stocks.filter(s => !s.error && s.price);
+
+  // Top performer (heute)
+  const byDay = [...valid].sort((a,b) => (b.change_pct||0) - (a.change_pct||0));
+  document.getElementById('top-performers').innerHTML = byDay.slice(0,5).map((s,i) => {
+    const pct = s.change_pct || 0;
+    return `<div class="flex justify-between items-center py-1">
+      <span>${i+1}. <strong class="text-blue-700">${s.ticker}</strong> <span class="text-gray-500">${s.name||''}</span></span>
+      <span class="num-up font-medium">▲ ${pct.toFixed(2)}%</span>
+    </div>`;
+  }).join('') || '<div class="text-gray-400">Keine Daten</div>';
+
+  // Signale: RSI-Überverkauf, SMA-Crossover, Analyst-Upside
+  const signals = [];
+  for (const s of valid) {
+    if (s.rsi_14 && s.rsi_14 < 35) signals.push({ticker:s.ticker, signal:`RSI überverkauft (${s.rsi_14})`, type:'buy'});
+    if (s.rsi_14 && s.rsi_14 > 75) signals.push({ticker:s.ticker, signal:`RSI überkauft (${s.rsi_14})`, type:'warn'});
+    if (s.sma50 && s.price && s.price > s.sma50 * 1.05) signals.push({ticker:s.ticker, signal:`5% über SMA50`, type:'info'});
+    if (s.target_upside && s.target_upside > 25) signals.push({ticker:s.ticker, signal:`Analysten-Ziel +${s.target_upside}%`, type:'buy'});
+    if (s.pe_forward && s.pe_forward < 15) signals.push({ticker:s.ticker, signal:`PE < 15 (günstig)`, type:'buy'});
+  }
+  document.getElementById('signals').innerHTML = signals.slice(0,8).map(s => {
+    const color = s.type === 'buy' ? 'text-green-700 bg-green-50 border-green-200' : (s.type === 'warn' ? 'text-red-700 bg-red-50 border-red-200' : 'text-blue-700 bg-blue-50 border-blue-200');
+    return `<div class="${color} border rounded-lg px-3 py-2">
+      <strong>${s.ticker}</strong>: ${s.signal}
+    </div>`;
+  }).join('') || '<div class="text-gray-400">Keine Signale</div>';
+}
+
+function fmtNum(n) { if (n==null) return '-'; return Number(n).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+</script>
+</body>
+</html>
