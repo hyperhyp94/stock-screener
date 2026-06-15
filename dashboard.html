@@ -86,6 +86,40 @@
   </div>
 </section>
 
+<!-- Sektor-Rotation -->
+<section>
+  <div class="flex items-center justify-between mb-3">
+    <h2 class="text-lg font-semibold text-gray-800">💰 Sektor-Rotation — Wo fließt das Geld hin?</h2>
+    <button onclick="loadSectors()" class="text-sm text-blue-600 hover:text-blue-800">🔄 Aktualisieren</button>
+  </div>
+  <div id="sector-status" class="text-gray-500 text-sm mb-3"></div>
+
+  <!-- Money-Flow Zusammenfassung -->
+  <div id="flow-summary" class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4"></div>
+
+  <!-- Sektor-Performance-Tabelle -->
+  <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead class="bg-gray-100 text-gray-600 uppercase text-xs">
+        <tr>
+          <th class="px-4 py-3 text-left">Sektor</th>
+          <th class="px-4 py-3 text-right">Preis</th>
+          <th class="px-4 py-3 text-right">Tag</th>
+          <th class="px-4 py-3 text-right">1 Woche</th>
+          <th class="px-4 py-3 text-right">1 Monat</th>
+          <th class="px-4 py-3 text-right">3 Monate</th>
+          <th class="px-4 py-3 text-right">YTD</th>
+          <th class="px-4 py-3 text-center">Flow-Signal</th>
+          <th class="px-4 py-3 text-right">Rotation-Score</th>
+        </tr>
+      </thead>
+      <tbody id="sector-body" class="divide-y divide-gray-200">
+        <tr><td colspan="9" class="px-4 py-8 text-center text-gray-400">Lade Sektordaten...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
 <!-- Top/Flop + Alerts -->
 <section class="grid grid-cols-1 md:grid-cols-2 gap-6">
   <!-- Top Performer -->
@@ -108,6 +142,7 @@ let dashData = null;
 document.addEventListener('DOMContentLoaded', () => {
   updateClock(); setInterval(updateClock, 30000);
   loadDashboard();
+  loadSectors();
 });
 
 function updateClock() { document.getElementById('clock').textContent = new Date().toLocaleString('de-DE', {timeZone: 'Europe/Berlin'}); }
@@ -207,6 +242,69 @@ function renderSignals(stocks) {
       <strong>${s.ticker}</strong>: ${s.signal}
     </div>`;
   }).join('') || '<div class="text-gray-400">Keine Signale</div>';
+}
+
+// ─── SEKTOR-ROTATION ──────────────────────────────────────────
+async function loadSectors() {
+  document.getElementById('sector-status').innerHTML = '<div class="flex items-center gap-2"><div class="loader"></div> Sektor-Daten laden...</div>';
+  try {
+    const res = await fetch('/api/sectors/performance');
+    const data = await res.json();
+    const sectors = data.sectors || [];
+    const summary = data.summary || {};
+
+    // Flow-Zusammenfassung
+    const signalIcon = {'bullish':'🟢 Geld fließt IN Aktien','bearish':'🔴 Geld fließt RAUS','neutral':'⚪ Kein klarer Flow'};
+    document.getElementById('flow-summary').innerHTML = `
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+        <div class="text-xs text-gray-500 mb-1">Flow-Signal</div>
+        <div class="text-lg font-bold">${signalIcon[summary.signal] || '⚪ Neutral'}</div>
+      </div>
+      <div class="bg-green-50 border border-green-200 rounded-xl p-4">
+        <div class="text-xs text-green-700 mb-1">💰 Stärkste Zuflüsse</div>
+        <div class="text-sm font-medium space-y-1">${(summary.inflows||[]).slice(0,4).map(s => `${s.emoji||''} ${s.name}`).join('<br>') || 'Keine'}</div>
+      </div>
+      <div class="bg-red-50 border border-red-200 rounded-xl p-4">
+        <div class="text-xs text-red-700 mb-1">📉 Geld fließt ab aus</div>
+        <div class="text-sm font-medium space-y-1">${(summary.outflows||[]).slice(0,4).map(s => `${s.emoji||''} ${s.name}`).join('<br>') || 'Keine'}</div>
+      </div>`;
+
+    // Sektor-Tabelle
+    document.getElementById('sector-body').innerHTML = sectors.map(s => {
+      if (s.error) return `<tr><td colspan="9" class="px-4 py-3 text-red-500">${s.ticker}: ${s.error}</td></tr>`;
+      const pct = s.change_pct || 0, pctCls = pct>=0?'num-up':'num-down';
+      const w = s.perf_1w||0, wCls = w>=0?'num-up':'num-down';
+      const m = s.perf_1m||0, mCls = m>=0?'num-up':'num-down';
+      const q = s.perf_3m||0, qCls = q>=0?'num-up':'num-down';
+      const y = s.perf_ytd||0, yCls = y>=0?'num-up':'num-down';
+      const flow = s.flow_signal||'neutral';
+      let flowBadge = '';
+      if (flow === 'strong_inflow') flowBadge = '<span class="chip chip-buy">🔥 Starker Zufluss</span>';
+      else if (flow === 'inflow') flowBadge = '<span class="chip chip-buy">✅ Zufluss</span>';
+      else if (flow === 'outflow') flowBadge = '<span class="chip chip-sell">❌ Abfluss</span>';
+      else if (flow === 'strong_outflow') flowBadge = '<span class="chip chip-sell">🩸 Starker Abfluss</span>';
+      else flowBadge = '<span class="text-gray-400">—</span>';
+
+      const score = s.rotation_score || 0;
+      const scoreBg = score > 9 ? 'bg-green-100 text-green-800' : (score > 3 ? 'bg-blue-50 text-blue-700' : (score < -5 ? 'bg-red-50 text-red-700' : 'bg-gray-100 text-gray-600'));
+
+      return `<tr class="hover:bg-gray-50">
+        <td class="px-4 py-3 font-semibold">${s.emoji||''} ${s.name} <span class="text-gray-400 text-xs">${s.ticker}</span></td>
+        <td class="px-4 py-3 text-right font-medium">${fmtNum(s.price)}</td>
+        <td class="px-4 py-3 text-right ${pctCls}">${pct>=0?'▲':'▼'}${Math.abs(pct).toFixed(2)}%</td>
+        <td class="px-4 py-3 text-right ${wCls}">${w>0?'+':''}${w.toFixed(1)}%</td>
+        <td class="px-4 py-3 text-right ${mCls}">${m>0?'+':''}${m.toFixed(1)}%</td>
+        <td class="px-4 py-3 text-right ${qCls}">${q>0?'+':''}${q.toFixed(1)}%</td>
+        <td class="px-4 py-3 text-right ${yCls}">${y>0?'+':''}${y.toFixed(1)}%</td>
+        <td class="px-4 py-3 text-center">${flowBadge}</td>
+        <td class="px-4 py-3 text-right"><span class="inline-block px-2 py-0.5 rounded text-xs font-bold ${scoreBg}">${score.toFixed(1)}</span></td>
+      </tr>`;
+    }).join('');
+
+    document.getElementById('sector-status').innerHTML = '';
+  } catch(e) {
+    document.getElementById('sector-status').innerHTML = `<span class="text-red-600">Fehler: ${e.message}</span>`;
+  }
 }
 
 function fmtNum(n) { if (n==null) return '-'; return Number(n).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2}); }

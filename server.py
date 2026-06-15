@@ -518,9 +518,157 @@ def api_dashboard():
     })
 
 
+@app.route("/api/sectors/performance", methods=["GET"])
+def api_sectors_performance():
+    """Sektor-Rotation: Performance aller Sektor-ETFs (Tag, Woche, Monat, YTD) + Money-Flow"""
+    import yfinance as yf
+
+    sector_etfs = {
+        # US Sektor-ETFs (State Street SPDR)
+        "XLK":  {"name": "Technology", "emoji": "💻"},
+        "XLF":  {"name": "Financials", "emoji": "🏦"},
+        "XLE":  {"name": "Energy", "emoji": "🛢️"},
+        "XLV":  {"name": "Healthcare", "emoji": "🏥"},
+        "XLY":  {"name": "Consumer Disc.", "emoji": "🛍️"},
+        "XLP":  {"name": "Consumer Staples", "emoji": "🧴"},
+        "XLI":  {"name": "Industrials", "emoji": "🏭"},
+        "XLB":  {"name": "Materials", "emoji": "🧱"},
+        "XLRE": {"name": "Real Estate", "emoji": "🏠"},
+        "XLU":  {"name": "Utilities", "emoji": "⚡"},
+        "XLC":  {"name": "Communication", "emoji": "📡"},
+        "XBI":  {"name": "Biotech", "emoji": "🧬"},
+        "XRT":  {"name": "Retail", "emoji": "🛒"},
+        "SMH":  {"name": "Semiconductors", "emoji": "🔲"},
+        "KRE":  {"name": "Regional Banks", "emoji": "🏛️"},
+        # EU Sektor-ETFs
+        "SX8P.DE": {"name": "EU Technology", "emoji": "🇪🇺💻"},
+        "SX7P.DE": {"name": "EU Financials", "emoji": "🇪🇺🏦"},
+        "SXEP.DE": {"name": "EU Energy", "emoji": "🇪🇺🛢️"},
+        # Rohstoffe
+        "GLD":  {"name": "Gold", "emoji": "🥇"},
+        "SLV":  {"name": "Silver", "emoji": "🥈"},
+        "USO":  {"name": "Oil", "emoji": "🛢️"},
+    }
+
+    results = []
+    flows = {}
+
+    for ticker, meta in sector_etfs.items():
+        try:
+            t = yf.Ticker(ticker)
+            info = t.info or {}
+            price = safe_num(info.get('currentPrice') or info.get('regularMarketPrice') or info.get('previousClose'))
+            prev_close = safe_num(info.get('previousClose'), price)
+            change_pct = None
+            if price and prev_close and prev_close != 0:
+                change_pct = round((price - prev_close) / prev_close * 100, 2)
+
+            # Volume-Analyse (Money-Flow-Signal)
+            vol = safe_num(info.get('volume'))
+            avg_vol = safe_num(info.get('averageVolume'))
+            rel_vol = None
+            flow_signal = "neutral"
+            if vol and avg_vol and avg_vol > 0:
+                rel_vol = round(vol / avg_vol, 2)
+                if rel_vol > 2.0 and change_pct and change_pct > 0:
+                    flow_signal = "strong_inflow"
+                elif rel_vol > 1.5 and change_pct and change_pct > 0:
+                    flow_signal = "inflow"
+                elif rel_vol > 1.5 and change_pct and change_pct < 0:
+                    flow_signal = "outflow"
+                elif rel_vol > 2.0 and change_pct and change_pct < 0:
+                    flow_signal = "strong_outflow"
+
+            # Weekly/Monthly/YTD Performance via History
+            perf_1w = None
+            perf_1m = None
+            perf_3m = None
+            perf_ytd = None
+
+            try:
+                # 1 Woche
+                h1w = t.history(period="5d")
+                if len(h1w) >= 5:
+                    w_start = float(h1w['Close'].values[0])
+                    if w_start > 0 and price:
+                        perf_1w = round((price - w_start) / w_start * 100, 1)
+
+                # 1 Monat
+                h1m = t.history(period="1mo")
+                if len(h1m) >= 5:
+                    m_start = float(h1m['Close'].values[0])
+                    if m_start > 0 and price:
+                        perf_1m = round((price - m_start) / m_start * 100, 1)
+
+                # 3 Monate
+                h3m = t.history(period="3mo")
+                if len(h3m) >= 10:
+                    q_start = float(h3m['Close'].values[0])
+                    if q_start > 0 and price:
+                        perf_3m = round((price - q_start) / q_start * 100, 1)
+
+                # YTD
+                hyd = t.history(period="ytd")
+                if len(hyd) > 0:
+                    y_start = float(hyd['Close'].values[0])
+                    if y_start > 0 and price:
+                        perf_ytd = round((price - y_start) / y_start * 100, 1)
+            except:
+                pass
+
+            entry = {
+                "ticker": ticker,
+                "name": meta["name"],
+                "emoji": meta["emoji"],
+                "price": price,
+                "change_pct": change_pct,
+                "volume": vol,
+                "avg_volume": avg_vol,
+                "rel_volume": rel_vol,
+                "flow_signal": flow_signal,
+                "perf_1w": perf_1w,
+                "perf_1m": perf_1m,
+                "perf_3m": perf_3m,
+                "perf_ytd": perf_ytd,
+                "market_cap": safe_num(info.get('marketCap')),
+            }
+            results.append(entry)
+            flows[ticker] = flow_signal
+        except Exception as e:
+            results.append({"ticker": ticker, "name": meta["name"], "emoji": meta["emoji"], "error": str(e)})
+
+    # Money-Flow-Zusammenfassung
+    inflows = [r for r in results if r.get("flow_signal") in ("strong_inflow", "inflow")]
+    outflows = [r for r in results if r.get("flow_signal") in ("strong_outflow", "outflow")]
+
+    # Rotation-Score: Kombiniere 1W + 1M + rel_vol
+    for r in results:
+        score = 0
+        if r.get("perf_1w"): score += r["perf_1w"] * 2
+        if r.get("perf_1m"): score += r["perf_1m"] * 1.5
+        if r.get("perf_3m"): score += r["perf_3m"] * 1
+        if r.get("rel_volume"): score += (r["rel_volume"] - 1) * 5
+        r["rotation_score"] = round(score, 1)
+
+    # Sortiert nach Rotation-Score
+    results.sort(key=lambda r: r.get("rotation_score", float("-inf")), reverse=True)
+
+    return jsonify({
+        "sectors": results,
+        "summary": {
+            "inflows": [{"ticker": r["ticker"], "name": r["name"], "emoji": r.get("emoji","")} for r in inflows[:5]],
+            "outflows": [{"ticker": r["ticker"], "name": r["name"], "emoji": r.get("emoji","")} for r in outflows[:5]],
+            "strongest_sector": results[0] if results else None,
+            "weakest_sector": results[-1] if results else None,
+            "signal": "bullish" if len(inflows) > len(outflows) + 3 else ("bearish" if len(outflows) > len(inflows) + 3 else "neutral"),
+        },
+        "timestamp": datetime.now().isoformat()
+    })
+
+
 # ─── START ──────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     port = int(os.environ.get("TOOL_PORT", "5120"))
-    print(f"Stock Screener v2 läuft auf Port {port}")
+    print(f"Stock Screener v3 läuft auf Port {port}")
     app.run(host="0.0.0.0", port=port, debug=False)
