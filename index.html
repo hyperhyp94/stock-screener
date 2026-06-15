@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>📈 Stock Screener</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  .loader { border: 3px solid #e5e7eb; border-top: 3px solid #2563eb; border-radius: 50%; width: 24px; height: 24px; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .num-up { color: #16a34a; }
+  .num-down { color: #dc2626; }
+  tr { cursor: pointer; }
+  tr:hover { background-color: #f9fafb; }
+  .detail-row { background: #f8fafc; }
+  .detail-row td { padding: 0; }
+  .detail-inner { padding: 16px 24px; border-top: 1px solid #e5e7eb; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+  .chip { display: inline-block; padding: 2px 10px; border-radius: 9999px; font-size: 12px; font-weight: 600; }
+  .chip-buy { background: #dcfce7; color: #166534; }
+  .chip-hold { background: #fef3c7; color: #92400e; }
+  .chip-sell { background: #fee2e2; color: #991b1b; }
+</style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+<!-- Header -->
+<header class="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-10">
+  <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+    <h1 class="text-xl font-bold text-gray-900">📈 Stock Screener</h1>
+    <span id="clock" class="text-sm text-gray-500"></span>
+  </div>
+</header>
+
+<main class="max-w-6xl mx-auto px-4 py-6 space-y-6">
+
+<!-- Markt-Übersicht -->
+<section id="market-section">
+  <div class="flex items-center gap-2 mb-3">
+    <h2 class="text-lg font-semibold text-gray-800">Markt-Übersicht</h2>
+    <button onclick="loadMarket()" class="text-sm text-blue-600 hover:text-blue-800" title="Aktualisieren">🔄</button>
+  </div>
+  <div id="market-cards" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 animate-pulse"><div class="h-4 bg-gray-200 rounded w-12 mb-2"></div><div class="h-6 bg-gray-200 rounded w-20"></div></div>
+  </div>
+</section>
+
+<!-- Suche -->
+<section>
+  <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+    <label class="block text-sm font-medium text-gray-700 mb-2">🔍 Aktien suchen (Ticker oder Name)</label>
+    <div class="flex gap-2">
+      <input id="search-input" type="text" placeholder="z.B. NVDA, AAPL, TSLA, Amazon..."
+             class="border border-gray-300 rounded-lg px-3 py-2 flex-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+             onkeydown="if(event.key==='Enter')searchStocks()">
+      <button onclick="searchStocks()" class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg">Suchen</button>
+    </div>
+    <p class="text-xs text-gray-400 mt-2">Mehrere Ticker mit Komma trennen: AAPL, MSFT, GOOGL</p>
+  </div>
+</section>
+
+<!-- Filter -->
+<section>
+  <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-lg font-semibold text-gray-800">🔧 Screener-Filter</h2>
+      <div class="flex gap-2">
+        <button onclick="runScreen()" class="bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg text-sm">Jetzt screenen</button>
+        <button onclick="clearFilters()" class="border border-gray-300 hover:bg-gray-50 text-gray-700 font-medium px-4 py-2 rounded-lg text-sm">Reset</button>
+      </div>
+    </div>
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 text-sm">
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Sektor</label>
+        <select id="f-sector" class="border border-gray-300 rounded-lg px-2 py-1.5 w-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="">Alle Sektoren</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Marktkap. min (Mrd)</label>
+        <input id="f-min-mcap" type="number" placeholder="z.B. 50" class="border border-gray-300 rounded-lg px-2 py-1.5 w-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Forward PE max</label>
+        <input id="f-max-pe" type="number" placeholder="z.B. 30" class="border border-gray-300 rounded-lg px-2 py-1.5 w-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">RSI min/max</label>
+        <div class="flex gap-1">
+          <input id="f-min-rsi" type="number" placeholder="45" class="border border-gray-300 rounded-lg px-2 py-1.5 w-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <input id="f-max-rsi" type="number" placeholder="70" class="border border-gray-300 rounded-lg px-2 py-1.5 w-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Dividende min (%)</label>
+        <input id="f-min-div" type="number" step="0.1" placeholder="z.B. 1.5" class="border border-gray-300 rounded-lg px-2 py-1.5 w-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500 mb-1">Rating</label>
+        <select id="f-rating" class="border border-gray-300 rounded-lg px-2 py-1.5 w-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="">Alle Ratings</option>
+          <option value="STRONG_BUY">Strong Buy</option>
+          <option value="BUY">Buy</option>
+          <option value="HOLD">Hold</option>
+        </select>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Ergebnisse -->
+<section>
+  <div class="flex items-center justify-between mb-3">
+    <h2 class="text-lg font-semibold text-gray-800" id="results-title">Ergebnisse</h2>
+    <span id="results-count" class="text-sm text-gray-500"></span>
+  </div>
+  <div id="results-status" class="text-gray-500 text-sm"></div>
+  <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
+    <table class="w-full text-sm" id="results-table" style="display:none">
+      <thead class="bg-gray-100 text-gray-600 uppercase text-xs">
+        <tr>
+          <th class="px-4 py-3 text-left sortable" data-sort="ticker">Ticker ▾</th>
+          <th class="px-4 py-3 text-left sortable" data-sort="name">Name</th>
+          <th class="px-4 py-3 text-left sortable" data-sort="sector">Sektor</th>
+          <th class="px-4 py-3 text-right sortable" data-sort="price">Preis</th>
+          <th class="px-4 py-3 text-right sortable" data-sort="change_pct">Tag %</th>
+          <th class="px-4 py-3 text-right sortable" data-sort="market_cap">Marktkap.</th>
+          <th class="px-4 py-3 text-right sortable" data-sort="pe_forward">PE (fwd)</th>
+          <th class="px-4 py-3 text-right sortable" data-sort="rsi_14">RSI</th>
+          <th class="px-4 py-3 text-right sortable" data-sort="dividend_yield">Div.%</th>
+          <th class="px-4 py-3 text-center sortable" data-sort="recommendation">Rating</th>
+          <th class="px-4 py-3 text-right sortable" data-sort="target_upside">Ziel ±%</th>
+        </tr>
+      </thead>
+      <tbody id="results-body" class="divide-y divide-gray-200"></tbody>
+    </table>
+  </div>
+</section>
+
+</main>
+
+<script>
+// ─── Globale Variablen ──────────────────────────────────────
+let currentResults = [];
+let currentSort = { by: 'change_pct', dir: 'desc' };
+
+// ─── INIT ────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  updateClock();
+  setInterval(updateClock, 30000);
+  loadSectors();
+  loadMarket();
+  // Click-Handler: Sortierung
+  document.getElementById('results-table').addEventListener('click', e => {
+    const th = e.target.closest('th.sortable');
+    if (th) {
+      const col = th.dataset.sort;
+      if (currentSort.by === col) {
+        currentSort.dir = currentSort.dir === 'asc' ? 'desc' : 'asc';
+      } else {
+        currentSort.by = col;
+        currentSort.dir = 'desc';
+      }
+      sortAndRender();
+      updateSortHeaders();
+    }
+  });
+});
+
+function updateClock() {
+  document.getElementById('clock').textContent = new Date().toLocaleString('de-DE', {timeZone: 'Europe/Berlin'});
+}
+
+// ─── MARKT-ÜBERSICHT ─────────────────────────────────────────
+async function loadMarket() {
+  try {
+    const res = await fetch('/api/market');
+    const data = await res.json();
+    const indices = data.indices;
+    const container = document.getElementById('market-cards');
+    if (!indices) return;
+    const order = ['SPY', 'QQQ', 'IWM', 'DIA', 'VIX'];
+    container.innerHTML = order.map(key => {
+      const d = indices[key];
+      if (!d || d.error) return '';
+      const pct = d.change_pct || 0;
+      const cls = pct >= 0 ? 'num-up' : 'num-down';
+      const arrow = pct >= 0 ? '▲' : '▼';
+      return `<div class="bg-white rounded-xl shadow-sm border border-gray-200 p-3">
+        <div class="text-xs text-gray-500 uppercase tracking-wide">${d.description || key}</div>
+        <div class="text-lg font-bold mt-1">${fmtNum(d.price)}</div>
+        <div class="text-sm ${cls}">${arrow} ${pct.toFixed(2)}%</div>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    console.error('Market load error:', e);
+  }
+}
+
+// ─── SEKTOREN LADEN ──────────────────────────────────────────
+async function loadSectors() {
+  try {
+    const res = await fetch('/api/sectors');
+    const data = await res.json();
+    const sel = document.getElementById('f-sector');
+    data.sectors.forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s;
+      opt.textContent = s;
+      sel.appendChild(opt);
+    });
+  } catch (e) {}
+}
+
+// ─── SUCHE ───────────────────────────────────────────────────
+async function searchStocks() {
+  const input = document.getElementById('search-input').value.trim();
+  if (!input) return;
+  showLoading('Suche läuft...');
+  try {
+    const tickers = input.split(/[,;]+/).map(t => t.trim()).filter(Boolean);
+    const res = await fetch('/api/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tickers })
+    });
+    const data = await res.json();
+    currentResults = data.results || [];
+    if (currentResults.length === 0) {
+      document.getElementById('results-status').innerHTML = '<span class="text-gray-500">Keine Ergebnisse gefunden.</span>';
+    }
+    sortAndRender();
+  } catch (e) {
+    document.getElementById('results-status').innerHTML = `<span class="text-red-600">Fehler: ${e.message}</span>`;
+  }
+  hideLoading();
+}
+
+// ─── SCREENER ────────────────────────────────────────────────
+async function runScreen() {
+  showLoading('Screene 80+ Aktien...');
+  const filters = {
+    sector: document.getElementById('f-sector').value,
+    min_mcap: parseFloat(document.getElementById('f-min-mcap').value) * 1e9 || null,
+    min_pe: 0.1,
+    max_pe: parseFloat(document.getElementById('f-max-pe').value) || null,
+    min_rsi: parseFloat(document.getElementById('f-min-rsi').value) || null,
+    max_rsi: parseFloat(document.getElementById('f-max-rsi').value) || null,
+    min_div_yield: parseFloat(document.getElementById('f-min-div').value) ? parseFloat(document.getElementById('f-min-div').value) / 100 : null,
+    recommendation: document.getElementById('f-rating').value,
+    sort_by: currentSort.by,
+    sort_dir: currentSort.dir,
+  };
+  // Null-Werte entfernen
+  Object.keys(filters).forEach(k => { if (filters[k] === null || filters[k] === '' || (typeof filters[k] === 'number' && isNaN(filters[k]))) delete filters[k]; });
+
+  try {
+    const res = await fetch('/api/screen', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(filters)
+    });
+    const data = await res.json();
+    currentResults = data.results || [];
+    document.getElementById('results-count').textContent = `(${data.count} Treffer)`;
+    sortAndRender();
+  } catch (e) {
+    document.getElementById('results-status').innerHTML = `<span class="text-red-600">Fehler: ${e.message}</span>`;
+  }
+  hideLoading();
+}
+
+function clearFilters() {
+  document.querySelectorAll('input[id^="f-"], select[id^="f-"]').forEach(el => {
+    if (el.tagName === 'SELECT') el.selectedIndex = 0;
+    else el.value = '';
+  });
+}
+
+// ─── RENDERING ───────────────────────────────────────────────
+function sortAndRender() {
+  const key = currentSort.by;
+  const dir = currentSort.dir === 'desc' ? -1 : 1;
+  currentResults.sort((a, b) => {
+    let va = a[key], vb = b[key];
+    if (va == null) va = dir === 1 ? Infinity : -Infinity;
+    if (vb == null) vb = dir === 1 ? Infinity : -Infinity;
+    if (typeof va === 'string') va = va.toLowerCase();
+    if (typeof vb === 'string') vb = vb.toLowerCase();
+    return (va > vb ? 1 : va < vb ? -1 : 0) * dir;
+  });
+  renderTable();
+}
+
+function renderTable() {
+  const tbody = document.getElementById('results-body');
+  const table = document.getElementById('results-table');
+  if (currentResults.length === 0) {
+    table.style.display = 'none';
+    document.getElementById('results-status').innerHTML = '<span class="text-gray-500">Noch keine Ergebnisse. Suche nach Ticker oder klicke „Jetzt screenen".</span>';
+    return;
+  }
+  table.style.display = '';
+  document.getElementById('results-status').innerHTML = '';
+  document.getElementById('results-count').textContent = `(${currentResults.length} Aktien)`;
+
+  tbody.innerHTML = currentResults.map((r, i) => {
+    if (r.error) return `<tr><td colspan="11" class="px-4 py-3 text-red-500">❌ ${r.ticker}: ${r.error}</td></tr>`;
+    const pct = r.change_pct || 0;
+    const pctCls = pct >= 0 ? 'num-up' : 'num-down';
+    const arrow = pct >= 0 ? '▲' : '▼';
+    const rating = r.recommendation || '';
+    let chipCls = '';
+    if (rating.includes('STRONG_BUY') || rating.includes('BUY')) chipCls = 'chip-buy';
+    else if (rating.includes('HOLD')) chipCls = 'chip-hold';
+    else if (rating.includes('SELL') || rating.includes('UNDERPERFORM')) chipCls = 'chip-sell';
+
+    return `<tr onclick="toggleDetail(${i}, this)" class="group">
+      <td class="px-4 py-3 font-semibold text-blue-700">${r.ticker}</td>
+      <td class="px-4 py-3 max-w-[140px] truncate" title="${r.name}">${r.name || '-'}</td>
+      <td class="px-4 py-3 text-gray-500 max-w-[120px] truncate">${r.sector || '-'}</td>
+      <td class="px-4 py-3 text-right font-medium">${fmtNum(r.price)}</td>
+      <td class="px-4 py-3 text-right ${pctCls}">${arrow} ${Math.abs(pct).toFixed(2)}%</td>
+      <td class="px-4 py-3 text-right text-gray-500">${fmtMcap(r.market_cap)}</td>
+      <td class="px-4 py-3 text-right">${r.pe_forward ? r.pe_forward.toFixed(1) : '-'}</td>
+      <td class="px-4 py-3 text-right">${r.rsi_14 ? r.rsi_14.toFixed(1) : '-'}</td>
+      <td class="px-4 py-3 text-right">${r.dividend_yield ? (r.dividend_yield * 100).toFixed(2) + '%' : '-'}</td>
+      <td class="px-4 py-3 text-center">${rating ? `<span class="chip ${chipCls}">${rating.replace('_',' ')}</span>` : '-'}</td>
+      <td class="px-4 py-3 text-right ${(r.target_upside||0) > 0 ? 'num-up' : ((r.target_upside||0) < 0 ? 'num-down' : '')}">${r.target_upside != null ? (r.target_upside > 0 ? '+' : '') + r.target_upside + '%' : '-'}</td>
+    </tr>
+    <tr class="detail-row" id="detail-${i}" style="display:none">
+      <td colspan="11">
+        <div class="detail-inner">
+          <div><span class="text-xs text-gray-500">Branche</span><br><span class="text-sm font-medium">${r.industry || '-'}</span></div>
+          <div><span class="text-xs text-gray-500">Land</span><br><span class="text-sm font-medium">${r.country || '-'}</span></div>
+          <div><span class="text-xs text-gray-500">Börse</span><br><span class="text-sm font-medium">${r.exchange || '-'}</span></div>
+          <div><span class="text-xs text-gray-500">PE (trailing)</span><br><span class="text-sm font-medium">${r.pe_trailing ? r.pe_trailing.toFixed(1) : '-'}</span></div>
+          <div><span class="text-xs text-gray-500">EPS</span><br><span class="text-sm font-medium">${r.eps ? fmtNum(r.eps) : '-'}</span></div>
+          <div><span class="text-xs text-gray-500">Beta</span><br><span class="text-sm font-medium">${r.beta ? r.beta.toFixed(2) : '-'}</span></div>
+          <div><span class="text-xs text-gray-500">52W Hoch</span><br><span class="text-sm font-medium">${fmtNum(r['52w_high'])}</span></div>
+          <div><span class="text-xs text-gray-500">52W Tief</span><br><span class="text-sm font-medium">${fmtNum(r['52w_low'])}</span></div>
+          <div><span class="text-xs text-gray-500">Analysten-Ziel</span><br><span class="text-sm font-medium">${fmtNum(r.target_price)}</span></div>
+          <div><span class="text-xs text-gray-500">Analysten</span><br><span class="text-sm font-medium">${r.num_analysts || '-'}</span></div>
+          <div><span class="text-xs text-gray-500">Volumen</span><br><span class="text-sm font-medium">${fmtMcap(r.volume)}</span></div>
+          <div><span class="text-xs text-gray-500">Ø-Volumen</span><br><span class="text-sm font-medium">${fmtMcap(r.avg_volume)}</span></div>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function toggleDetail(idx, row) {
+  const detailRow = document.getElementById('detail-' + idx);
+  if (!detailRow) return;
+  const isHidden = detailRow.style.display === 'none';
+  // Alle Details schließen
+  document.querySelectorAll('.detail-row').forEach(r => r.style.display = 'none');
+  if (isHidden) detailRow.style.display = '';
+}
+
+function updateSortHeaders() {
+  document.querySelectorAll('th.sortable').forEach(th => {
+    const col = th.dataset.sort;
+    th.textContent = th.textContent.replace(/ [▴▾]/, '');
+    if (col === currentSort.by) {
+      th.textContent += currentSort.dir === 'desc' ? ' ▾' : ' ▴';
+    } else {
+      th.textContent += ' ▾';
+    }
+  });
+}
+
+// ─── HELFER ──────────────────────────────────────────────────
+function fmtNum(n) {
+  if (n == null) return '-';
+  return Number(n).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function fmtMcap(n) {
+  if (n == null) return '-';
+  const abs = Math.abs(n);
+  if (abs >= 1e12) return (n / 1e12).toFixed(2) + ' Bio.';
+  if (abs >= 1e9) return (n / 1e9).toFixed(1) + ' Mrd.';
+  if (abs >= 1e6) return (n / 1e6).toFixed(1) + ' Mio.';
+  return Number(n).toLocaleString('de-DE');
+}
+function showLoading(msg) {
+  document.getElementById('results-status').innerHTML = `<div class="flex items-center gap-2"><div class="loader"></div> ${msg} (kann ~30 Sekunden dauern)</div>`;
+}
+function hideLoading() {
+  // Der Status wird von renderTable/sortAndRender überschrieben
+}
+</script>
+</body>
+</html>
